@@ -185,5 +185,10 @@ Because the agent uses natural-language instructions rather than coded selectors
 
 ## Tags
 
+- **Title:** Automate Browser Testing with AI on OpenShift AI
+- **Description:** Deploy an AI agent that autonomously tests web applications by operating a real browser, driven by natural-language instructions and an open-source LLM.
 - **Industry:** Media and IT services
 - **Product:** Red Hat OpenShift AI
+- **Use case:** QA automation, testing
+- **Partner:** N/A
+- **Contributor org:** Red Hat
