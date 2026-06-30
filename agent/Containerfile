@@ -1,0 +1,53 @@
+FROM node:22-bookworm-slim
+
+# System dependencies: Python, display stack (Xvfb/VNC/noVNC), and procps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 python3-pip python3-venv \
+    xvfb x11vnc novnc fluxbox \
+    procps \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install @playwright/mcp and the full Chromium browser.
+# Uses MCP's bundled Playwright to ensure browser/server version compatibility.
+# Creates version symlinks for MCP browser discovery across versions.
+RUN mkdir -p /opt/playwright-mcp && cd /opt/playwright-mcp && \
+    npm init -y && \
+    npm install @playwright/mcp && \
+    MCP_VERSION=$(node -p "require('./node_modules/@playwright/mcp/package.json').version") && \
+    ./node_modules/.bin/playwright install --with-deps chromium && \
+    npx --yes @playwright/mcp@${MCP_VERSION} --version && \
+    CHROME=$(find /root/.cache/ms-playwright -path '*/chromium-*/chrome-linux64/chrome' -type f | head -1) && \
+    if [ -z "$CHROME" ] || [ ! -x "$CHROME" ]; then \
+      echo "ERROR: Chromium binary not found" && exit 1; \
+    fi && \
+    echo "$CHROME" > /opt/playwright-mcp/.chrome-path && \
+    CHROMIUM_VER=$(basename $(dirname $(dirname $CHROME)) | sed 's/chromium-//') && \
+    for TARGET_VER in 1208 1212 1217 1220 1226 $CHROMIUM_VER; do \
+      TARGET_DIR="/root/.cache/ms-playwright/chromium-$TARGET_VER/chrome-linux64" && \
+      mkdir -p "$TARGET_DIR" && \
+      ln -sf "$CHROME" "$TARGET_DIR/chrome" 2>/dev/null || true; \
+    done && \
+    chmod -R a+rX /root/.cache/ms-playwright && \
+    chmod a+x /root /root/.cache && \
+    npm cache clean --force
+
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+ENV NPM_CONFIG_CACHE=/tmp/.npm
+
+# Python dependencies
+WORKDIR /agent
+COPY requirements.txt .
+RUN python3 -m pip install --no-cache-dir --break-system-packages -r requirements.txt
+
+COPY agent.py entrypoint.sh chrome-wrapper.sh ./
+RUN chmod +x entrypoint.sh chrome-wrapper.sh
+
+# OpenShift runs containers with random UIDs in group 0.
+# All writable directories must be group-writable.
+RUN mkdir -p /opt/playwright-mcp/node_modules/.cache /.fluxbox && \
+    chown -R 1001:0 /agent /tmp /opt/playwright-mcp /.fluxbox && \
+    chmod -R g=u /agent /tmp /opt/playwright-mcp /.fluxbox
+
+USER 1001
+EXPOSE 5000 6080
+ENTRYPOINT ["./entrypoint.sh"]
