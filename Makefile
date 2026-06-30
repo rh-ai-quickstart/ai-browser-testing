@@ -1,25 +1,16 @@
-NAMESPACE      ?= ai-browser-testing
-INTERNAL_IMAGE := image-registry.openshift-image-registry.svc:5000/$(NAMESPACE)/ai-browser-testing:latest
+NAMESPACE ?= ai-browser-testing
 
-.PHONY: deploy undeploy build-cluster deploy-agent logs dashboard status restart
+.PHONY: deploy undeploy logs dashboard status restart
 
-deploy: build-cluster deploy-model deploy-agent dashboard
-
-build-cluster:
-	oc new-build --binary --name=ai-browser-testing --strategy=docker -n $(NAMESPACE) 2>/dev/null || true
-	oc patch buildconfig ai-browser-testing -n $(NAMESPACE) --type=json \
-	  -p '[{"op":"add","path":"/spec/strategy/dockerStrategy/dockerfilePath","value":"Containerfile"}]' 2>/dev/null || true
-	oc start-build ai-browser-testing --from-dir=agent/ --follow --wait -n $(NAMESPACE)
-
-deploy-model:
-	oc apply -f deploy/01-model-serving.yaml -n $(NAMESPACE)
+deploy:
+	oc new-project $(NAMESPACE) 2>/dev/null || oc project $(NAMESPACE)
+	oc label namespace $(NAMESPACE) opendatahub.io/dashboard=true --overwrite
+	oc apply -f deploy/ -n $(NAMESPACE)
+	@echo ""
 	@echo "Waiting for model (this may take several minutes)..."
-	oc wait --for=condition=Ready inferenceservice/qwen3-8b --timeout=600s -n $(NAMESPACE)
-
-deploy-agent:
-	sed 's|quay.io/rh-ai-quickstart/ai-browser-testing:latest|$(INTERNAL_IMAGE)|' \
-	  deploy/02-testing-agent.yaml | oc apply -f - -n $(NAMESPACE)
+	oc wait --for=condition=Ready inferenceservice/qwen3-8b -n $(NAMESPACE) --timeout=600s
 	oc rollout status deployment/browser-testing-agent -n $(NAMESPACE) --timeout=120s
+	@$(MAKE) --no-print-directory dashboard
 
 undeploy:
 	oc delete project $(NAMESPACE)

@@ -97,54 +97,28 @@ git clone https://github.com/rh-ai-quickstart/ai-browser-testing.git
 cd ai-browser-testing
 ```
 
-### Step 2: Create a project
+### Step 2: Deploy
 
 ```bash
-oc new-project ai-browser-testing
-oc label namespace ai-browser-testing opendatahub.io/dashboard=true --overwrite
+make deploy
 ```
 
-### Step 3: Deploy the model
-
-This deploys the Qwen3 8B model with vLLM serving and tool-calling support. The model download takes several minutes.
-
-```bash
-oc apply -f deploy/01-model-serving.yaml
-oc wait --for=condition=Ready inferenceservice/qwen3-8b --timeout=600s
-```
+This single command creates the project, deploys the model, deploys the testing agent, and prints the dashboard URL when ready. The model download takes several minutes on first deploy.
 
 > **Note:** The vLLM image reference in `deploy/01-model-serving.yaml` may need updating to match your Red Hat OpenShift AI version. Check your cluster's existing image with:
 > ```bash
 > oc get servingruntime -n redhat-ods-applications -o jsonpath='{.items[0].spec.containers[0].image}'
 > ```
 
-### Step 4: Build and deploy the testing agent
+### Step 3: Open the dashboard
 
-Build the container image on-cluster:
-
-```bash
-oc new-build --binary --name=ai-browser-testing --strategy=docker
-oc patch buildconfig ai-browser-testing --type=json -p '[{"op":"add","path":"/spec/strategy/dockerStrategy/dockerfilePath","value":"Containerfile"}]'
-oc start-build ai-browser-testing --from-dir=agent/ --follow --wait
-```
-
-Then deploy:
+When `make deploy` finishes, it prints the dashboard URL. Open it in your browser:
 
 ```bash
-# Point the deployment at the image we just built
-sed 's|quay.io/rh-ai-quickstart/ai-browser-testing:latest|image-registry.openshift-image-registry.svc:5000/ai-browser-testing/ai-browser-testing:latest|' \
-  deploy/02-testing-agent.yaml | oc apply -f -
-
-oc rollout status deployment/browser-testing-agent --timeout=120s
+make dashboard
 ```
 
-### Step 5: Open the dashboard
-
-```bash
-echo "Dashboard: http://$(oc get route todo-app -o jsonpath='{.spec.host}')"
-```
-
-Open the URL in your browser. The dashboard shows:
+The dashboard shows:
 - **Status** — current run number, iteration count, live updates
 - **Watch the AI** — link to the noVNC live browser view where you can see Chrome being operated by the AI in real-time
 - **TODO App** — link to the application under test
