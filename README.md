@@ -28,6 +28,16 @@ This is a simplified demonstration of the concept. The 8B model handles straight
 
 After deploying, open the **dashboard URL** — it links to the live browser view (via noVNC) and the TODO app under test, and shows test results updating in real-time.
 
+![Testing dashboard showing live run status, test history, and recent browser actions](docs/images/dashboard.png)
+
+The AI agent operates a real Chrome browser — watch it navigate, click, and type via noVNC:
+
+![Chrome browser inside the container, operated by the AI agent, showing the TODO app with items created](docs/images/agent.png)
+
+The TODO app with items created and toggled by the AI agent:
+
+![TODO app showing items added and toggled by the AI testing agent](docs/images/app.png)
+
 ### Architecture
 
 ```
