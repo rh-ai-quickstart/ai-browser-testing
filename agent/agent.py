@@ -132,14 +132,10 @@ DASHBOARD_TEMPLATE = """<!DOCTYPE html>
     </style>
 </head>
 <body>
-    <header class="pf-v6-c-masthead">
-        <div class="pf-v6-c-masthead__main" style="padding:var(--pf-t--global--spacer--md) var(--pf-t--global--spacer--lg)">
-            <span class="pf-v6-c-title pf-m-lg" style="color:var(--pf-t--global--text--color--on-brand--default)">AI Browser Testing</span>
-            <span style="margin-left:var(--pf-t--global--spacer--md);font-size:13px;color:var(--pf-t--global--text--color--subtle)">
-                Playwright MCP + Qwen3 8B on Red Hat OpenShift AI
-            </span>
-        </div>
-    </header>
+    <div style="background:var(--pf-t--global--background--color--brand--default);padding:var(--pf-t--global--spacer--md) var(--pf-t--global--spacer--lg);display:flex;align-items:center;gap:var(--pf-t--global--spacer--md)">
+        <span class="pf-v6-c-title pf-m-lg" style="color:#fff">AI Browser Testing</span>
+        <span style="font-size:13px;color:rgba(255,255,255,0.7)">Playwright MCP + Qwen3 8B on Red Hat OpenShift AI</span>
+    </div>
 
     <div style="padding:var(--pf-t--global--spacer--sm) var(--pf-t--global--spacer--lg);display:flex;align-items:center;gap:var(--pf-t--global--spacer--sm);border-bottom:1px solid var(--pf-t--global--border--color--default)">
         <span class="pf-v6-c-label pf-m-compact" id="statusLabel">
