@@ -27,5 +27,5 @@ jobs:
           file: Containerfile
           push: true
           tags: |
-            quay.io/rh-ai-quickstart/ai-browser-testing:latest
-            quay.io/rh-ai-quickstart/ai-browser-testing:${{ github.sha }}
+            quay.io/rh_ee_addrew/ai-browser-testing:latest
+            quay.io/rh_ee_addrew/ai-browser-testing:${{ github.sha }}

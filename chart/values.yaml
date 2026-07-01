@@ -18,7 +18,7 @@ model:
 # Agent configuration
 agent:
   image:
-    repository: quay.io/rh-ai-quickstart/ai-browser-testing
+    repository: quay.io/rh_ee_addrew/ai-browser-testing
     tag: latest
   resources:
     requests:

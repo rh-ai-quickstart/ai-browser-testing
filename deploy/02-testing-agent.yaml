@@ -21,7 +21,7 @@ spec:
             sizeLimit: 1Gi
       containers:
         - name: agent
-          image: quay.io/rh-ai-quickstart/ai-browser-testing:latest
+          image: quay.io/rh_ee_addrew/ai-browser-testing:latest
           env:
             - name: MODEL_ENDPOINT
               value: "http://qwen3-8b-predictor:8080/v1"
