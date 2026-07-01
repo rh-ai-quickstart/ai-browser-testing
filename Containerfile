@@ -51,3 +51,4 @@ RUN mkdir -p /opt/playwright-mcp/node_modules/.cache /.fluxbox && \
 USER 1001
 EXPOSE 5000 6080
 ENTRYPOINT ["./entrypoint.sh"]
+# trigger build
