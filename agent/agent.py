@@ -19,7 +19,9 @@ APP_PORT = int(os.environ.get("APP_PORT", "5000"))
 TODO_APP_URL = f"http://localhost:{APP_PORT}"
 MAX_ITERATIONS = int(os.environ.get("MAX_ITERATIONS", "30"))
 MAX_TOOL_RESULT_CHARS = 4000
-VNC_PATH = os.environ.get("VNC_PATH", "/vnc.html")
+
+PF_CSS = "https://cdn.jsdelivr.net/npm/@patternfly/patternfly@6/patternfly.min.css"
+PF_ADDONS = "https://cdn.jsdelivr.net/npm/@patternfly/patternfly@6/patternfly-addons.css"
 
 # ---------------------------------------------------------------------------
 # Shared test state — written by agent, read by dashboard
@@ -33,7 +35,7 @@ test_state = {
     "max_iterations": MAX_ITERATIONS,
     "steps": [],
     "runs": [],
-    "last_action": None,
+    "last_actions": [],
 }
 
 # ---------------------------------------------------------------------------
@@ -51,51 +53,214 @@ TODO_TEMPLATE = """<!DOCTYPE html>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TODO App</title>
+    <link rel="stylesheet" href="{{ pf_css }}">
     <style>
-        body { font-family: sans-serif; max-width: 600px; margin: 40px auto; padding: 0 20px; }
-        h1 { margin-bottom: 20px; }
-        form.add-form { display: flex; gap: 8px; margin-bottom: 24px; }
-        form.add-form input[type="text"] { flex: 1; padding: 8px; font-size: 16px; }
-        button { padding: 8px 16px; font-size: 14px; cursor: pointer; }
-        ul { list-style: none; padding: 0; }
-        li { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid #eee; }
-        li.completed span.todo-text { text-decoration: line-through; color: #888; }
-        span.todo-text { flex: 1; }
-        .status { color: #666; margin-top: 16px; }
+        body { background: var(--pf-t--global--background--color--primary); }
+        .todo-wrap { max-width: 600px; margin: 0 auto; padding: var(--pf-t--global--spacer--xl); }
+        .todo-item { display: flex; align-items: center; gap: var(--pf-t--global--spacer--sm);
+                     padding: var(--pf-t--global--spacer--sm) 0;
+                     border-bottom: 1px solid var(--pf-t--global--border--color--default); }
+        .todo-item.completed .todo-text { text-decoration: line-through;
+                                          color: var(--pf-t--global--text--color--subtle); }
+        .todo-text { flex: 1; }
+        .add-row { display: flex; gap: var(--pf-t--global--spacer--sm); margin-bottom: var(--pf-t--global--spacer--lg); }
+        .add-row input { flex: 1; }
     </style>
 </head>
 <body>
-    <h1>TODO App</h1>
-    <form class="add-form" action="/app/add" method="post">
-        <label for="todo-input" class="sr-only">New task</label>
-        <input type="text" id="todo-input" name="task" placeholder="Enter a new task..." required
-               aria-label="New task">
-        <button type="submit">Add</button>
-    </form>
-    <ul aria-label="Task list">
-        {% for todo in todos %}
-        <li class="{{ 'completed' if todo.done else '' }}">
-            <form action="/app/toggle/{{ todo.id }}" method="post" style="display:inline">
-                <button type="submit"
-                        aria-label="{{ 'Mark incomplete' if todo.done else 'Mark complete' }}: {{ todo.task }}">
-                    {{ '☑' if todo.done else '☐' }}
-                </button>
-            </form>
-            <span class="todo-text">{{ todo.task }}</span>
-            <form action="/app/delete/{{ todo.id }}" method="post" style="display:inline">
-                <button type="submit" aria-label="Delete: {{ todo.task }}">&#x2715;</button>
-            </form>
-        </li>
-        {% endfor %}
-    </ul>
-    <p class="status">{{ todos | rejectattr('done') | list | length }} item(s) remaining</p>
+    <div class="todo-wrap">
+        <h1 class="pf-v6-c-title pf-m-2xl" style="margin-bottom:var(--pf-t--global--spacer--lg)">TODO App</h1>
+        <form class="add-row" action="/app/add" method="post">
+            <input class="pf-v6-c-form-control" type="text" name="task"
+                   placeholder="Enter a new task..." required aria-label="New task">
+            <button class="pf-v6-c-button pf-m-primary" type="submit">Add</button>
+        </form>
+        <div>
+            {% for todo in todos %}
+            <div class="todo-item {{ 'completed' if todo.done else '' }}">
+                <form action="/app/toggle/{{ todo.id }}" method="post" style="display:inline">
+                    <button class="pf-v6-c-button pf-m-plain" type="submit"
+                            aria-label="{{ 'Mark incomplete' if todo.done else 'Mark complete' }}: {{ todo.task }}">
+                        {% if todo.done %}&#9745;{% else %}&#9744;{% endif %}
+                    </button>
+                </form>
+                <span class="todo-text">{{ todo.task }}</span>
+                <form action="/app/delete/{{ todo.id }}" method="post" style="display:inline">
+                    <button class="pf-v6-c-button pf-m-plain pf-m-danger" type="submit"
+                            aria-label="Delete: {{ todo.task }}">&#x2715;</button>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+        <p style="margin-top:var(--pf-t--global--spacer--md);color:var(--pf-t--global--text--color--subtle)">
+            {{ todos | rejectattr('done') | list | length }} item(s) remaining
+        </p>
+    </div>
+</body>
+</html>"""
+
+# -- Dashboard -------------------------------------------------------------
+
+DASHBOARD_TEMPLATE = """<!DOCTYPE html>
+<html lang="en" class="pf-v6-theme-dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Browser Testing Dashboard</title>
+    <link rel="stylesheet" href="{{ pf_css }}">
+    <link rel="stylesheet" href="{{ pf_addons }}">
+    <style>
+        body { background: var(--pf-t--global--background--color--primary); }
+        .dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--pf-t--global--spacer--lg);
+                     padding: var(--pf-t--global--spacer--lg); }
+        @media (max-width: 992px) { .dash-grid { grid-template-columns: 1fr; } }
+        .link-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--pf-t--global--spacer--md);
+                     margin-bottom: var(--pf-t--global--spacer--lg); }
+        .step-row { display: flex; align-items: center; gap: var(--pf-t--global--spacer--sm);
+                    padding: var(--pf-t--global--spacer--sm) var(--pf-t--global--spacer--md);
+                    border-bottom: 1px solid var(--pf-t--global--border--color--default); }
+        .step-name { flex: 1; }
+        .hist-row { display: flex; align-items: center; gap: var(--pf-t--global--spacer--md);
+                    padding: var(--pf-t--global--spacer--sm) 0;
+                    border-bottom: 1px solid var(--pf-t--global--border--color--default); font-size: 14px; }
+        .hist-row .hist-time { margin-left: auto; color: var(--pf-t--global--text--color--subtle); font-size: 12px; }
+        .log-line { font-family: var(--pf-t--global--font--family--mono); font-size: 12px;
+                    color: var(--pf-t--global--text--color--subtle); padding: 2px 0;
+                    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+        .pulse { animation: pulse 1.5s infinite; }
+    </style>
+</head>
+<body>
+    <header class="pf-v6-c-masthead">
+        <div class="pf-v6-c-masthead__main" style="padding:var(--pf-t--global--spacer--md) var(--pf-t--global--spacer--lg)">
+            <span class="pf-v6-c-title pf-m-lg" style="color:var(--pf-t--global--text--color--on-brand--default)">AI Browser Testing</span>
+            <span style="margin-left:var(--pf-t--global--spacer--md);font-size:13px;color:var(--pf-t--global--text--color--subtle)">
+                Playwright MCP + Qwen3 8B on Red Hat OpenShift AI
+            </span>
+        </div>
+    </header>
+
+    <div style="padding:var(--pf-t--global--spacer--sm) var(--pf-t--global--spacer--lg);display:flex;align-items:center;gap:var(--pf-t--global--spacer--sm);border-bottom:1px solid var(--pf-t--global--border--color--default)">
+        <span class="pf-v6-c-label pf-m-compact" id="statusLabel">
+            <span class="pf-v6-c-label__content"><span class="pf-v6-c-label__text" id="statusText">Starting...</span></span>
+        </span>
+        <span style="font-size:13px;color:var(--pf-t--global--text--color--subtle)" id="statusDetail"></span>
+    </div>
+
+    <div class="dash-grid">
+        <div>
+            <div class="link-grid">
+                <a id="vncLink" href="#" target="_blank" class="pf-v6-c-card pf-m-clickable" style="text-decoration:none">
+                    <div class="pf-v6-c-card__header"><div class="pf-v6-c-card__title"><span class="pf-v6-c-card__title-text">Watch the AI</span></div></div>
+                    <div class="pf-v6-c-card__body" style="font-size:13px;color:var(--pf-t--global--text--color--subtle)">Live browser view via noVNC</div>
+                </a>
+                <a href="/app" target="_blank" class="pf-v6-c-card pf-m-clickable" style="text-decoration:none">
+                    <div class="pf-v6-c-card__header"><div class="pf-v6-c-card__title"><span class="pf-v6-c-card__title-text">TODO App</span></div></div>
+                    <div class="pf-v6-c-card__body" style="font-size:13px;color:var(--pf-t--global--text--color--subtle)">The application under test</div>
+                </a>
+            </div>
+
+            <div class="pf-v6-c-card">
+                <div class="pf-v6-c-card__header"><div class="pf-v6-c-card__title"><span class="pf-v6-c-card__title-text">Current Run</span></div></div>
+                <div class="pf-v6-c-card__body" id="currentRun">
+                    <p style="text-align:center;padding:var(--pf-t--global--spacer--xl);color:var(--pf-t--global--text--color--subtle)">Waiting for first test run...</p>
+                </div>
+            </div>
+
+            <div class="pf-v6-c-card" style="margin-top:var(--pf-t--global--spacer--md)" id="actionCard" hidden>
+                <div class="pf-v6-c-card__header"><div class="pf-v6-c-card__title"><span class="pf-v6-c-card__title-text">Recent Actions</span></div></div>
+                <div class="pf-v6-c-card__body" id="actionLog"></div>
+            </div>
+        </div>
+
+        <div>
+            <div class="pf-v6-c-card pf-m-full-height">
+                <div class="pf-v6-c-card__header"><div class="pf-v6-c-card__title"><span class="pf-v6-c-card__title-text">Test History</span></div></div>
+                <div class="pf-v6-c-card__body" id="history">
+                    <p style="text-align:center;padding:var(--pf-t--global--spacer--xl);color:var(--pf-t--global--text--color--subtle)">No completed runs yet</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    const STEPS = ['Navigate & verify heading','Add "Buy groceries"','Add "Write report"','Toggle complete','Delete "Write report"'];
+
+    function updateDashboard() {
+        fetch('/api/results').then(r => r.json()).then(data => {
+            const sLabel = document.getElementById('statusLabel');
+            const sText = document.getElementById('statusText');
+            const sDetail = document.getElementById('statusDetail');
+            const colors = {starting:'',running:'pf-m-green',idle:'pf-m-orange',waiting:'pf-m-orange'};
+            const labels = {starting:'Starting',running:'Running',idle:'Idle',waiting:'Waiting'};
+            sLabel.className = 'pf-v6-c-label pf-m-compact ' + (colors[data.status]||'');
+            sText.textContent = labels[data.status] || data.status;
+            if (data.status === 'running') sText.classList.add('pulse');
+            else sText.classList.remove('pulse');
+            sDetail.textContent = data.status === 'running'
+                ? 'Run #' + data.run_number + ' • Iteration ' + data.iteration + '/' + data.max_iterations
+                : data.runs.length + ' runs completed';
+
+            const cur = document.getElementById('currentRun');
+            if (data.run_number > 0) {
+                let h = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px"><b>Run #' + data.run_number + '</b>';
+                if (data.status === 'running') h += ' <span class="pf-v6-c-label pf-m-compact pf-m-blue"><span class="pf-v6-c-label__content"><span class="pf-v6-c-label__text">Running</span></span></span>';
+                h += '</div>';
+                for (let i = 0; i < 5; i++) {
+                    const s = data.steps[i];
+                    let icon = '•', cls = 'color:var(--pf-t--global--text--color--subtle)', detail = '';
+                    if (s) {
+                        if (s.result === 'PASS') { icon = '✔'; cls = 'color:var(--pf-t--global--color--status--success--default)'; detail = s.detail||''; }
+                        else if (s.result === 'FAIL') { icon = '✘'; cls = 'color:var(--pf-t--global--color--status--danger--default)'; detail = s.detail||''; }
+                    } else if (data.status === 'running') { icon = '▶'; cls = 'color:var(--pf-t--global--color--status--info--default)'; }
+                    h += '<div class="step-row"><span style="' + cls + '">' + icon + '</span><span class="step-name">Step ' + (i+1) + ': ' + STEPS[i] + '</span><span style="font-size:12px;color:var(--pf-t--global--text--color--subtle)">' + detail + '</span></div>';
+                }
+                cur.innerHTML = h;
+            }
+
+            const ac = document.getElementById('actionCard');
+            const al = document.getElementById('actionLog');
+            if (data.last_actions && data.last_actions.length > 0) {
+                ac.hidden = false;
+                al.innerHTML = data.last_actions.slice(-8).map(a =>
+                    '<div class="log-line"><span style="color:var(--pf-t--global--color--status--purple--default)">' + a.tool + '</span> ' +
+                    '<span style="color:var(--pf-t--global--color--status--success--default)">' + (a.args||'') + '</span></div>'
+                ).join('');
+            }
+
+            const hi = document.getElementById('history');
+            if (data.runs.length > 0) {
+                hi.innerHTML = data.runs.slice().reverse().map(run => {
+                    const p = run.steps.filter(s => s.result === 'PASS').length;
+                    const t = run.steps.length || 5;
+                    const c = p === t ? 'pf-m-green' : (p > 0 ? 'pf-m-orange' : 'pf-m-red');
+                    return '<div class="hist-row"><span>Run #' + run.number + '</span>' +
+                        '<span class="pf-v6-c-label pf-m-compact ' + c + '"><span class="pf-v6-c-label__content"><span class="pf-v6-c-label__text">' + p + '/' + t + '</span></span></span>' +
+                        run.steps.map(s => '<span style="font-size:14px">' + (s.result === 'PASS' ? '✔' : '✘') + '</span>').join('') +
+                        '<span class="hist-time">' + (run.finished||'') + '</span></div>';
+                }).join('');
+            }
+        }).catch(() => {});
+    }
+
+    const h = window.location.hostname;
+    document.getElementById('vncLink').href = window.location.protocol + '//' + h.replace(/^dashboard-/, 'browser-live-view-') + '/vnc.html';
+    setInterval(updateDashboard, 2000);
+    updateDashboard();
+    </script>
 </body>
 </html>"""
 
 
+@app.route("/")
+def dashboard():
+    return render_template_string(DASHBOARD_TEMPLATE, pf_css=PF_CSS, pf_addons=PF_ADDONS)
+
+
 @app.route("/app")
 def todo_index():
-    return render_template_string(TODO_TEMPLATE, todos=todos)
+    return render_template_string(TODO_TEMPLATE, todos=todos, pf_css=PF_CSS)
 
 
 @app.route("/app/add", methods=["POST"])
@@ -120,219 +285,6 @@ def todo_delete(todo_id):
     global todos
     todos = [t for t in todos if t["id"] != todo_id]
     return redirect(url_for("todo_index"))
-
-
-# -- Dashboard -------------------------------------------------------------
-
-DASHBOARD_TEMPLATE = """<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Browser Testing Dashboard</title>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: 'Inter', -apple-system, system-ui, sans-serif; background: #0f1117; color: #e1e4e8; min-height: 100vh; }
-
-        .header { background: linear-gradient(135deg, #1a1c24 0%, #252830 100%); border-bottom: 1px solid #2d3139; padding: 24px 32px; }
-        .header h1 { font-size: 22px; font-weight: 600; color: #fff; }
-        .header p { font-size: 13px; color: #8b949e; margin-top: 4px; }
-
-        .status-bar { display: flex; align-items: center; gap: 12px; padding: 16px 32px; background: #161920; border-bottom: 1px solid #2d3139; }
-        .status-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-        .status-dot.running { background: #3fb950; animation: pulse 1.5s infinite; }
-        .status-dot.idle { background: #f0883e; }
-        .status-dot.starting { background: #8b949e; animation: pulse 1s infinite; }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-        .status-text { font-size: 14px; font-weight: 500; }
-        .status-detail { font-size: 13px; color: #8b949e; margin-left: auto; }
-
-        .main { display: grid; grid-template-columns: 1fr 1fr; gap: 0; min-height: calc(100vh - 130px); }
-        @media (max-width: 900px) { .main { grid-template-columns: 1fr; } }
-
-        .panel { padding: 24px 32px; }
-        .panel-left { border-right: 1px solid #2d3139; }
-
-        .section-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.2px; color: #8b949e; margin-bottom: 16px; }
-
-        .links { display: flex; gap: 12px; margin-bottom: 32px; }
-        .link-card { flex: 1; padding: 16px; border-radius: 8px; border: 1px solid #2d3139; background: #1a1c24; text-decoration: none; color: #e1e4e8; transition: border-color 0.2s, background 0.2s; }
-        .link-card:hover { border-color: #58a6ff; background: #1c2333; }
-        .link-card .link-label { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
-        .link-card .link-desc { font-size: 12px; color: #8b949e; }
-
-        .run-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #2d3139; }
-        .run-number { font-size: 18px; font-weight: 600; }
-        .run-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; text-transform: uppercase; }
-        .run-badge.pass { background: #1b3a2d; color: #3fb950; }
-        .run-badge.fail { background: #3d1f20; color: #f85149; }
-        .run-badge.running { background: #1c2333; color: #58a6ff; }
-
-        .steps { display: flex; flex-direction: column; gap: 8px; }
-        .step { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 6px; background: #1a1c24; border: 1px solid #2d3139; font-size: 13px; }
-        .step.pass { border-left: 3px solid #3fb950; }
-        .step.fail { border-left: 3px solid #f85149; }
-        .step.active { border-left: 3px solid #58a6ff; background: #1c2333; }
-        .step.pending { border-left: 3px solid #30363d; opacity: 0.5; }
-        .step-icon { font-size: 16px; flex-shrink: 0; }
-        .step-name { font-weight: 500; flex: 1; }
-        .step-result { font-size: 12px; color: #8b949e; }
-
-        .history { margin-top: 24px; }
-        .history-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid #1a1c24; font-size: 13px; }
-        .history-score { font-weight: 600; min-width: 40px; }
-        .history-score.perfect { color: #3fb950; }
-        .history-score.partial { color: #f0883e; }
-        .history-score.zero { color: #f85149; }
-        .history-time { color: #8b949e; margin-left: auto; font-size: 12px; }
-
-        .action-log { margin-top: 24px; }
-        .log-entry { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 12px; color: #8b949e; padding: 3px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .log-entry .tool { color: #d2a8ff; }
-        .log-entry .args { color: #7ee787; }
-
-        .empty-state { text-align: center; padding: 48px 24px; color: #484f58; }
-        .empty-state p { font-size: 14px; }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>AI Browser Testing Dashboard</h1>
-        <p>Autonomous QA testing powered by Qwen3 8B + Playwright MCP on Red Hat OpenShift AI</p>
-    </div>
-
-    <div class="status-bar" id="statusBar">
-        <div class="status-dot starting" id="statusDot"></div>
-        <span class="status-text" id="statusText">Connecting...</span>
-        <span class="status-detail" id="statusDetail"></span>
-    </div>
-
-    <div class="main">
-        <div class="panel panel-left">
-            <div class="section-title">Live Views</div>
-            <div class="links">
-                <a class="link-card" id="vncLink" href="#" target="_blank">
-                    <div class="link-label">Watch the AI</div>
-                    <div class="link-desc">Live browser view via noVNC</div>
-                </a>
-                <a class="link-card" href="/app" target="_blank">
-                    <div class="link-label">TODO App</div>
-                    <div class="link-desc">The application under test</div>
-                </a>
-            </div>
-
-            <div class="section-title">Current Run</div>
-            <div id="currentRun">
-                <div class="empty-state"><p>Waiting for first test run...</p></div>
-            </div>
-
-            <div class="action-log" id="actionLog"></div>
-        </div>
-
-        <div class="panel">
-            <div class="section-title">Test History</div>
-            <div id="history">
-                <div class="empty-state"><p>No completed runs yet</p></div>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        function updateDashboard() {
-            fetch('/api/results')
-                .then(r => r.json())
-                .then(data => {
-                    // Status bar
-                    const dot = document.getElementById('statusDot');
-                    const text = document.getElementById('statusText');
-                    const detail = document.getElementById('statusDetail');
-                    dot.className = 'status-dot ' + data.status;
-                    const labels = {starting: 'Starting up...', running: 'Test running', idle: 'Between runs', waiting: 'Waiting for next run'};
-                    text.textContent = labels[data.status] || data.status;
-                    if (data.status === 'running') {
-                        detail.textContent = 'Run #' + data.run_number + ' • Iteration ' + data.iteration + '/' + data.max_iterations;
-                    } else if (data.status === 'idle' || data.status === 'waiting') {
-                        detail.textContent = data.runs.length + ' runs completed';
-                    } else {
-                        detail.textContent = '';
-                    }
-
-                    // Current run steps
-                    const currentEl = document.getElementById('currentRun');
-                    if (data.run_number > 0) {
-                        let html = '<div class="run-header"><span class="run-number">Run #' + data.run_number + '</span>';
-                        if (data.status === 'running') {
-                            html += '<span class="run-badge running">Running</span>';
-                        }
-                        html += '</div><div class="steps">';
-                        const stepDefs = ['Navigate & verify heading', 'Add "Buy groceries"', 'Add "Write report"', 'Toggle "Buy groceries"', 'Delete "Write report"'];
-                        for (let i = 0; i < 5; i++) {
-                            const step = data.steps[i];
-                            let cls = 'pending', icon = '•', result = '';
-                            if (step) {
-                                if (step.result === 'PASS') { cls = 'pass'; icon = '✔'; result = step.detail || ''; }
-                                else if (step.result === 'FAIL') { cls = 'fail'; icon = '✘'; result = step.detail || ''; }
-                                else { cls = 'active'; icon = '▶'; result = 'In progress...'; }
-                            } else if (data.status === 'running' && data.current_step === i + 1) {
-                                cls = 'active'; icon = '▶'; result = 'In progress...';
-                            }
-                            html += '<div class="step ' + cls + '"><span class="step-icon">' + icon + '</span>';
-                            html += '<span class="step-name">Step ' + (i+1) + ': ' + stepDefs[i] + '</span>';
-                            html += '<span class="step-result">' + result + '</span></div>';
-                        }
-                        html += '</div>';
-                        currentEl.innerHTML = html;
-                    }
-
-                    // Action log
-                    const logEl = document.getElementById('actionLog');
-                    if (data.last_actions && data.last_actions.length > 0) {
-                        let html = '<div class="section-title" style="margin-top:24px">Recent Actions</div>';
-                        data.last_actions.slice(-8).forEach(a => {
-                            html += '<div class="log-entry"><span class="tool">' + a.tool + '</span> ';
-                            html += '<span class="args">' + (a.args || '') + '</span></div>';
-                        });
-                        logEl.innerHTML = html;
-                    }
-
-                    // History
-                    const histEl = document.getElementById('history');
-                    if (data.runs.length > 0) {
-                        let html = '';
-                        data.runs.slice().reverse().forEach(run => {
-                            const passed = run.steps.filter(s => s.result === 'PASS').length;
-                            const total = run.steps.length || 5;
-                            let cls = passed === total ? 'perfect' : (passed > 0 ? 'partial' : 'zero');
-                            html += '<div class="history-item">';
-                            html += '<span>Run #' + run.number + '</span>';
-                            html += '<span class="history-score ' + cls + '">' + passed + '/' + total + '</span>';
-                            run.steps.forEach(s => {
-                                html += '<span style="font-size:14px">' + (s.result === 'PASS' ? '✔' : '✘') + '</span>';
-                            });
-                            html += '<span class="history-time">' + (run.finished || '') + '</span>';
-                            html += '</div>';
-                        });
-                        histEl.innerHTML = html;
-                    }
-                })
-                .catch(() => {});
-        }
-        // Construct VNC URL from dashboard hostname pattern
-        const host = window.location.hostname;
-        const vncHost = host.replace(/^todo-app-/, 'browser-live-view-');
-        document.getElementById('vncLink').href = window.location.protocol + '//' + vncHost + '/vnc.html';
-
-        setInterval(updateDashboard, 2000);
-        updateDashboard();
-    </script>
-</body>
-</html>"""
-
-
-@app.route("/")
-def dashboard():
-    vnc_url = os.environ.get("VNC_URL", VNC_PATH)
-    return render_template_string(DASHBOARD_TEMPLATE, vnc_url=vnc_url)
 
 
 @app.route("/api/results")
@@ -399,7 +351,6 @@ STEP 3: PASS/FAIL - description
 STEP 4: PASS/FAIL - description
 STEP 5: PASS/FAIL - description
 OVERALL: X/5 passed"""
-
 
 SNAPSHOT_SCHEMA = {
     "type": "object",

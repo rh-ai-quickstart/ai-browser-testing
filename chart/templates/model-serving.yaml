@@ -1,0 +1,80 @@
+apiVersion: serving.kserve.io/v1alpha1
+kind: ServingRuntime
+metadata:
+  annotations:
+    opendatahub.io/accelerator-name: ''
+    opendatahub.io/apiProtocol: REST
+    opendatahub.io/template-display-name: vLLM
+    opendatahub.io/template-name: vllm
+    openshift.io/display-name: {{ .Values.model.name }}
+  name: {{ .Values.model.name }}
+  labels:
+    opendatahub.io/dashboard: 'true'
+spec:
+  builtInAdapter:
+    modelLoadingTimeoutMillis: 90000
+  containers:
+    - args:
+        - '--dtype=half'
+        - '--gpu-memory-utilization=0.95'
+        - '--enable-chunked-prefill'
+        - '--port=8080'
+        - '--model=/mnt/models'
+        - '--served-model-name={{ .Values.model.servedName }}'
+        - '--max-model-len={{ .Values.model.maxModelLen }}'
+      env:
+        - name: VLLM_CONFIG_ROOT
+          value: /tmp
+      image: {{ .Values.model.vllmImage }}
+      name: kserve-container
+      ports:
+        - containerPort: 8080
+          name: http1
+          protocol: TCP
+      volumeMounts:
+        - mountPath: /dev/shm
+          name: shm
+  multiModel: false
+  supportedModelFormats:
+    - autoSelect: true
+      name: pytorch
+  volumes:
+    - emptyDir:
+        medium: Memory
+        sizeLimit: 2Gi
+      name: shm
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  annotations:
+    openshift.io/display-name: {{ .Values.model.name }}
+    serving.kserve.io/deploymentMode: RawDeployment
+  name: {{ .Values.model.name }}
+  labels:
+    opendatahub.io/dashboard: 'true'
+spec:
+  predictor:
+    maxReplicas: 1
+    minReplicas: 1
+    model:
+      args:
+        - '--enable-auto-tool-choice'
+        - '--tool-call-parser={{ .Values.model.toolCallParser }}'
+      modelFormat:
+        name: pytorch
+      resources:
+        limits:
+          cpu: {{ .Values.model.resources.limits.cpu | quote }}
+          memory: {{ .Values.model.resources.limits.memory }}
+          nvidia.com/gpu: '1'
+        requests:
+          cpu: {{ .Values.model.resources.requests.cpu | quote }}
+          memory: {{ .Values.model.resources.requests.memory }}
+          nvidia.com/gpu: '1'
+      runtime: {{ .Values.model.name }}
+      storageUri: {{ .Values.model.storageUri | quote }}
+    tolerations:
+      - effect: NoSchedule
+        key: nvidia.com/gpu
+        operator: Exists

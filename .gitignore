@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.env
+*.swp
+*.swo
+*~
+.DS_Store
+node_modules/
+dist/
+.playwright-mcp/

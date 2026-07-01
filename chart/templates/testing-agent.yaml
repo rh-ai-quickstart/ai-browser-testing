@@ -1,0 +1,95 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: browser-testing-agent
+  labels:
+    app: browser-testing-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: browser-testing-agent
+  template:
+    metadata:
+      labels:
+        app: browser-testing-agent
+    spec:
+      volumes:
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ .Values.agent.shmSize }}
+      containers:
+        - name: agent
+          image: {{ .Values.agent.image.repository }}:{{ .Values.agent.image.tag }}
+          env:
+            - name: MODEL_ENDPOINT
+              value: "http://{{ .Values.model.name }}-predictor:8080/v1"
+            - name: MODEL_NAME
+              value: {{ .Values.model.servedName | quote }}
+            - name: APP_PORT
+              value: "5000"
+          ports:
+            - containerPort: 5000
+              name: todo-app
+            - containerPort: 6080
+              name: novnc
+          volumeMounts:
+            - name: shm
+              mountPath: /dev/shm
+          resources:
+            requests:
+              cpu: {{ .Values.agent.resources.requests.cpu }}
+              memory: {{ .Values.agent.resources.requests.memory }}
+            limits:
+              cpu: {{ .Values.agent.resources.limits.cpu | quote }}
+              memory: {{ .Values.agent.resources.limits.memory }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: browser-testing-agent
+  labels:
+    app: browser-testing-agent
+spec:
+  selector:
+    app: browser-testing-agent
+  ports:
+    - port: 5000
+      targetPort: 5000
+      name: todo-app
+    - port: 6080
+      targetPort: 6080
+      name: novnc
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: dashboard
+  labels:
+    app: browser-testing-agent
+spec:
+  to:
+    kind: Service
+    name: browser-testing-agent
+  port:
+    targetPort: todo-app
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: browser-live-view
+  labels:
+    app: browser-testing-agent
+spec:
+  to:
+    kind: Service
+    name: browser-testing-agent
+  port:
+    targetPort: novnc

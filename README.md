@@ -97,22 +97,23 @@ git clone https://github.com/rh-ai-quickstart/ai-browser-testing.git
 cd ai-browser-testing
 ```
 
-### Step 2: Deploy
+### Step 2: Install
 
 ```bash
-make deploy
+make install
 ```
 
-This single command creates the project, deploys the model, deploys the testing agent, and prints the dashboard URL when ready. The model download takes several minutes on first deploy.
+This single command creates the project, installs the Helm chart, waits for the model, and prints the dashboard URL when ready. The model download takes several minutes on first install.
 
-> **Note:** The vLLM image reference in `deploy/01-model-serving.yaml` may need updating to match your Red Hat OpenShift AI version. Check your cluster's existing image with:
+> **Note:** The vLLM image reference in `chart/values.yaml` may need updating to match your Red Hat OpenShift AI version. Check your cluster's existing image with:
 > ```bash
 > oc get servingruntime -n redhat-ods-applications -o jsonpath='{.items[0].spec.containers[0].image}'
 > ```
+> Then update `model.vllmImage` in `chart/values.yaml` and run `make upgrade`.
 
 ### Step 3: Open the dashboard
 
-When `make deploy` finishes, it prints the dashboard URL. Open it in your browser:
+When `make install` finishes, it prints the dashboard URL. You can retrieve it anytime:
 
 ```bash
 make dashboard
@@ -127,12 +128,30 @@ The dashboard shows:
 
 The agent runs tests continuously in a loop. Each run takes about 2 minutes.
 
+### Configuration
+
+Edit `chart/values.yaml` to customize:
+
+```yaml
+model:
+  name: qwen3-8b                              # InferenceService name
+  storageUri: "hf://RedHatAI/Qwen3-8B-FP8-dynamic"  # Model source
+  vllmImage: "quay.io/modh/vllm:rhoai-2.19-cuda"    # vLLM runtime image
+
+agent:
+  image:
+    repository: quay.io/rh-ai-quickstart/ai-browser-testing
+    tag: latest
+```
+
+Apply changes with `make upgrade`.
+
 ### Delete
 
 Remove all quickstart resources:
 
 ```bash
-oc delete project ai-browser-testing
+make uninstall
 ```
 
 ## How It Works

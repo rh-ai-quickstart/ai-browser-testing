@@ -1,0 +1,30 @@
+---
+# Model configuration
+model:
+  name: qwen3-8b
+  servedName: qwen3-8b
+  storageUri: "hf://RedHatAI/Qwen3-8B-FP8-dynamic"
+  toolCallParser: hermes
+  maxModelLen: 16384
+  vllmImage: "quay.io/modh/vllm:rhoai-2.19-cuda"
+  resources:
+    requests:
+      cpu: "1"
+      memory: 8Gi
+    limits:
+      cpu: "4"
+      memory: 24Gi
+
+# Agent configuration
+agent:
+  image:
+    repository: quay.io/rh-ai-quickstart/ai-browser-testing
+    tag: latest
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 3Gi
+  shmSize: 1Gi
